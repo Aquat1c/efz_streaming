@@ -1,0 +1,1 @@
+Place character portrait PNG files in this directory.
