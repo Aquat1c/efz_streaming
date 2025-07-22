@@ -12,10 +12,14 @@
 #include "../include/http_server.h"
 #include "../include/game_data.h"
 #include "../include/logger.h"
+#include "../include/overlay_data.h"  // Add this include
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <string>
 #include <sstream>
+#include <filesystem>
+#include <fstream>
+#include <map>
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -199,17 +203,56 @@ DWORD WINAPI HttpServer::ServerThreadProc(LPVOID lpParam) {
     return 0;
 }
 
+// Add this function to determine content type based on file extension
+std::string GetContentType(const std::string& path) {
+    std::string ext = std::filesystem::path(path).extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    
+    static const std::map<std::string, std::string> contentTypes = {
+        {".html", "text/html"},
+        {".htm", "text/html"},
+        {".css", "text/css"},
+        {".js", "application/javascript"},
+        {".json", "application/json"},
+        {".png", "image/png"},
+        {".jpg", "image/jpeg"},
+        {".jpeg", "image/jpeg"},
+        {".gif", "image/gif"},
+        {".svg", "image/svg+xml"},
+        {".ico", "image/x-icon"}
+    };
+    
+    auto it = contentTypes.find(ext);
+    if (it != contentTypes.end()) {
+        return it->second;
+    }
+    
+    return "application/octet-stream"; // Default binary type
+}
+
+// Add this function to read files
+std::string ReadFile(const std::string& path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file.is_open()) {
+        return "";
+    }
+    
+    return std::string(
+        std::istreambuf_iterator<char>(file),
+        std::istreambuf_iterator<char>()
+    );
+}
+
+// Update the HandleRequest function to serve files
 void HttpServer::HandleRequest(SOCKET clientSocket) {
     LOG_FUNCTION_ENTRY();
-    char buffer[2048] = {0}; // Larger buffer for detailed requests
+    char buffer[2048] = {0};
     int bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
     
     if (bytesReceived > 0) {
-        // Null-terminate the received data
         buffer[bytesReceived] = '\0';
         std::string request(buffer);
         
-        // Extract request method and path for detailed logging
         std::string method, path;
         size_t methodEnd = request.find(' ');
         if (methodEnd != std::string::npos) {
@@ -222,31 +265,60 @@ void HttpServer::HandleRequest(SOCKET clientSocket) {
         
         Logger::Debug("HTTP Request: " + method + " " + path);
         
-        // Simple routing based on path
-        std::string contentType = "application/json";
-        std::string jsonData = GameDataManager::GetJSONData();
-        
-        // Handle different paths
-        if (path == "/health") {
-            jsonData = "{\"status\":\"ok\"}";
-        } else if (path == "/stats") {
-            // Add server stats to response
-            jsonData = "{\"uptime\":\"" + std::to_string(GetTickCount() / 1000) + " seconds\"}";
+        // Default path handling
+        if (path == "/" || path == "/index.html") {
+            path = "/overlay.html";
         }
         
-        // Generate and send response
-        std::string response = GenerateHttpResponse(jsonData, contentType);
-        int bytesSent = send(clientSocket, response.c_str(), static_cast<int>(response.length()), 0);
-        
-        if (bytesSent == SOCKET_ERROR) {
-            Logger::Warning("Failed to send response. Error: " + std::to_string(WSAGetLastError()));
-        } else {
-            Logger::Debug("Sent " + std::to_string(bytesSent) + " bytes response");
+        // Handle API endpoints
+        if (path == "/api/data" || path == "/api" || path == "/data") {
+            std::string jsonData = GameDataManager::GetJSONData();
+            std::string response = GenerateHttpResponse(jsonData, "application/json");
+            send(clientSocket, response.c_str(), static_cast<int>(response.length()), 0);
+            LOG_FUNCTION_EXIT();
+            return;
         }
-    } else if (bytesReceived == 0) {
-        Logger::Debug("Client closed connection");
-    } else {
-        Logger::Warning("Failed to receive data. Error: " + std::to_string(WSAGetLastError()));
+        else if (path == "/health") {
+            std::string jsonData = "{\"status\":\"ok\"}";
+            std::string response = GenerateHttpResponse(jsonData, "application/json");
+            send(clientSocket, response.c_str(), static_cast<int>(response.length()), 0);
+            LOG_FUNCTION_EXIT();
+            return;
+        }
+        
+        // Handle file requests
+        // Get the overlay assets directory from OverlayData
+        std::string assetsPath = OverlayData::GetOutputDirectory();
+        std::string filePath = assetsPath + path;
+        std::string fileContent;
+        
+        // Make the path safe - prevent directory traversal attacks
+        std::filesystem::path normalizedPath = std::filesystem::path(filePath).lexically_normal();
+        std::filesystem::path assetsDir = std::filesystem::path(assetsPath);
+        
+        // Check if the path is within the assets directory
+        if (normalizedPath.string().find(assetsDir.string()) == 0 && 
+            std::filesystem::exists(normalizedPath)) {
+            
+            fileContent = ReadFile(normalizedPath.string());
+            if (!fileContent.empty()) {
+                std::string contentType = GetContentType(path);
+                std::string response = GenerateHttpResponse(fileContent, contentType);
+                send(clientSocket, response.c_str(), static_cast<int>(response.length()), 0);
+                Logger::Debug("Served file: " + normalizedPath.string());
+                LOG_FUNCTION_EXIT();
+                return;
+            }
+        }
+        
+        // If we get here, the file wasn't found or couldn't be read
+        std::string notFoundResponse = "HTTP/1.1 404 Not Found\r\n";
+        notFoundResponse += "Content-Type: text/plain\r\n";
+        notFoundResponse += "Content-Length: 13\r\n\r\n";
+        notFoundResponse += "404 Not Found";
+        
+        send(clientSocket, notFoundResponse.c_str(), static_cast<int>(notFoundResponse.length()), 0);
+        Logger::Warning("File not found: " + path);
     }
     
     LOG_FUNCTION_EXIT();
@@ -260,6 +332,8 @@ std::string HttpServer::GenerateHttpResponse(const std::string& content, const s
     response << "HTTP/1.1 200 OK\r\n";
     response << "Content-Type: " << contentType << "\r\n";
     response << "Access-Control-Allow-Origin: *\r\n";  // Enable CORS
+    response << "Access-Control-Allow-Methods: GET\r\n"; // Add this line
+    response << "Access-Control-Allow-Headers: Content-Type\r\n"; // Add this line
     response << "Content-Length: " << content.length() << "\r\n";
     response << "Connection: close\r\n";
     response << "Server: EFZ-Streaming-Overlay/1.0\r\n";  // Add server identifier
@@ -269,6 +343,22 @@ std::string HttpServer::GenerateHttpResponse(const std::string& content, const s
     Logger::Debug("Generated HTTP response (" + std::to_string(response.str().length()) + " bytes)");
     LOG_FUNCTION_EXIT();
     return response.str();
+}
+
+// Update the HTTP response headers to include CORS
+std::string HttpServer::BuildHttpResponse(const std::string& jsonData) {
+    std::string response;
+    
+    // HTTP headers with CORS
+    response = "HTTP/1.1 200 OK\r\n";
+    response += "Content-Type: application/json\r\n";
+    response += "Access-Control-Allow-Origin: *\r\n"; // Allow CORS from any origin
+    response += "Access-Control-Allow-Methods: GET\r\n";
+    response += "Access-Control-Allow-Headers: Content-Type\r\n";
+    response += "Content-Length: " + std::to_string(jsonData.length()) + "\r\n\r\n";
+    response += jsonData;
+    
+    return response;
 }
 
 #pragma warning(pop)

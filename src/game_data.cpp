@@ -69,8 +69,8 @@ void GameDataManager::LogChanges() {
     previousData = currentData;
 }
 
-void GameDataManager::Update() {
-    if (!initialized) return;
+bool GameDataManager::Update() {
+    if (!initialized) return false;
     
     // Store old values for comparison
     GameData oldData = currentData;
@@ -82,30 +82,49 @@ void GameDataManager::Update() {
         // Update Player 1 data
         std::wstring p1Nick = MemoryReader::GetP1Nickname();
         currentData.player1.nickname = converter.to_bytes(p1Nick);
-        currentData.player1.character = MemoryReader::GetP1CharacterName();
-        currentData.player1.characterId = MemoryReader::GetP1CharacterID();
+        
+        // Get character data with proper error handling
+        std::string p1CharRaw = MemoryReader::GetP1CharacterNameRaw();
+        if (!p1CharRaw.empty()) {
+            currentData.player1.characterId = MemoryReader::GetP1CharacterID();
+            currentData.player1.character = MemoryReader::GetP1CharacterName();
+        } else {
+            // No character data available
+            currentData.player1.characterId = -1;
+            currentData.player1.character = "Unknown";
+        }
+        
         currentData.player1.winCount = MemoryReader::GetP1WinCount();
         
-        // Update Player 2 data
+        // Update Player 2 data with similar protection
         std::wstring p2Nick = MemoryReader::GetP2Nickname();
         currentData.player2.nickname = converter.to_bytes(p2Nick);
-        currentData.player2.character = MemoryReader::GetP2CharacterName();
-        currentData.player2.characterId = MemoryReader::GetP2CharacterID();
+        
+        std::string p2CharRaw = MemoryReader::GetP2CharacterNameRaw();
+        if (!p2CharRaw.empty()) {
+            currentData.player2.characterId = MemoryReader::GetP2CharacterID();
+            currentData.player2.character = MemoryReader::GetP2CharacterName();
+        } else {
+            currentData.player2.characterId = -1;
+            currentData.player2.character = "Unknown";
+        }
+        
         currentData.player2.winCount = MemoryReader::GetP2WinCount();
         
-        // Check if game is active based on valid character names
-        currentData.gameActive = (!currentData.player1.character.empty() && 
-                                 !currentData.player2.character.empty() && 
-                                 currentData.player1.character != "Undefined" && 
-                                 currentData.player2.character != "Undefined");
+        // Check if game is active based on valid character IDs
+        currentData.gameActive = (currentData.player1.characterId >= 0 && 
+                                currentData.player2.characterId >= 0);
         
         // Log only when important data changes
-        if (HasDataChanged()) {
+        bool changed = HasDataChanged();
+        if (changed) {
             LogChanges();
         }
         
+        return changed;
     } catch (const std::exception& e) {
         Logger::Error("Error updating game data: " + std::string(e.what()));
+        return false;
     }
 }
 
@@ -133,9 +152,11 @@ DWORD WINAPI GameDataManager::UpdateThreadProc(LPVOID lpParam) {
     Logger::Info("Game data update thread started");
     
     while (running) {
-        Update();
-        OverlayData::UpdateFiles(); // Update files every cycle
-        Sleep(100); // Update every 100ms (10 times per second) - increased from 50ms
+        // Only update files when data actually changes
+        if (Update()) {
+            OverlayData::UpdateFiles();
+        }
+        Sleep(100); // Update every 100ms (10 times per second)
     }
     
     Logger::Info("Game data update thread ended");

@@ -18,6 +18,7 @@ public:
     static bool Initialize(int port = 8080);
     static void Shutdown();
     static bool IsRunning();
+    static std::string BuildHttpResponse(const std::string& jsonData);
     
 private:
     static HANDLE serverThread;

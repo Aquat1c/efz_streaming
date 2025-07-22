@@ -35,8 +35,13 @@ public:
 private:
     static bool FindEFZProcess();
     static HMODULE GetModuleHandle(const std::string& moduleName);
+    static HMODULE GetModuleHandleDynamic(const char* moduleName);
     static DWORD WINAPI ModuleWatcherThreadProc(LPVOID lpParam);
-    static int MapRawCharacterNameToID(const std::string& rawName);  // Add this
+    static int MapRawCharacterNameToID(const std::string& rawName);
+    static std::string GetCharacterNameFromID(int id);  // Add this line
+    static bool IsValidNicknameChar(wchar_t c);
+    static std::wstring SanitizeNickname(const std::wstring& nickname);
+    static DWORD SanitizeWinCount(DWORD count);
     
     static HANDLE hProcess;
     static DWORD processId;

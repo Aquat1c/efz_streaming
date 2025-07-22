@@ -28,7 +28,7 @@ struct GameData {
 class GameDataManager {
 public:
     static bool Initialize();
-    static void Update();
+    static bool Update(); // Change return type to bool
     static const GameData& GetCurrentData();
     static std::string GetJSONData();
     static void Shutdown();

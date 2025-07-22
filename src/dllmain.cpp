@@ -114,7 +114,7 @@ DWORD WINAPI ConsoleCommandThread(LPVOID lpParam) {
         // Convert to lowercase for case-insensitive commands
         std::string cmd = input;
         std::transform(cmd.begin(), cmd.end(), cmd.begin(), 
-                     [](unsigned char c){ return std::tolower(c); });
+               [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
         
         if (cmd == "help") {
             std::cout << "Available commands:\n";
