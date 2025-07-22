@@ -4,6 +4,7 @@
 #include "../include/http_server.h"
 #include "../include/overlay_data.h"
 #include "../include/logger.h"
+#include "../include/constants.h"  // Add this include for the constant definitions
 #include <thread>
 #include <string>
 #include <sstream>
@@ -121,6 +122,7 @@ DWORD WINAPI ConsoleCommandThread(LPVOID lpParam) {
             std::cout << "  help          - Show this help\n";
             std::cout << "  filter on     - Enable memory operation filtering (reduce spam)\n";
             std::cout << "  filter off    - Disable memory operation filtering (show all reads)\n";
+            std::cout << "  debug chars   - Debug character detection\n";
             std::cout << "  quit          - Exit the command interface\n";
             std::cout << "  clear         - Clear the console\n";
         } 
@@ -129,6 +131,72 @@ DWORD WINAPI ConsoleCommandThread(LPVOID lpParam) {
         }
         else if (cmd == "filter off") {
             Logger::EnableMemoryOperationFiltering(false);
+        }
+        else if (cmd == "debug chars") {
+            // Debug character detection
+            std::cout << "---- Character Detection Debug ----\n";
+            
+            // Show the memory addresses and pointers
+            DWORD baseAddr1 = (DWORD)MemoryReader::GetEFZModuleAddress() + EFZ_BASE_OFFSET_P1;
+            DWORD p1Addr = MemoryReader::ReadDWORD(baseAddr1);
+            
+            std::cout << "P1 Base: 0x" << std::hex << baseAddr1 
+                      << " -> P1 Pointer: 0x" << p1Addr << "\n";
+            
+            if (p1Addr == 0) {
+                std::cout << "P1 CHARACTER NOT SELECTED (null pointer)\n";
+            } else {
+                DWORD charNameAddr1 = p1Addr + CHARACTER_NAME_OFFSET;
+                std::cout << "P1 Char Name Addr: 0x" << charNameAddr1 << "\n";
+                
+                // Force a cache-less read
+                bool originalCache = MemoryReader::IsCacheEnabled();
+                MemoryReader::EnableCache(false);
+                std::string rawName = MemoryReader::ReadString(charNameAddr1, 12);
+                MemoryReader::EnableCache(originalCache);
+                
+                std::cout << "P1 Direct memory read: '" << rawName << "'\n";
+                std::string p1Raw = MemoryReader::GetP1CharacterNameRaw();
+                std::cout << "P1 Raw Name: '" << p1Raw << "'\n";
+                
+                int p1Id = MemoryReader::GetP1CharacterID();
+                std::string p1Name = MemoryReader::GetP1CharacterName();
+                
+                std::cout << "P1 Character ID: " << std::dec << p1Id << "\n";
+                std::cout << "P1 Character Name: " << p1Name << "\n\n";
+            }
+            
+            // Same for P2
+            DWORD baseAddr2 = (DWORD)MemoryReader::GetEFZModuleAddress() + EFZ_BASE_OFFSET_P2;
+            DWORD p2Addr = MemoryReader::ReadDWORD(baseAddr2);
+            
+            std::cout << "P2 Base: 0x" << std::hex << baseAddr2 
+                      << " -> P2 Pointer: 0x" << p2Addr << "\n";
+            
+            if (p2Addr == 0) {
+                std::cout << "P2 CHARACTER NOT SELECTED (null pointer)\n";
+            } else {
+                DWORD charNameAddr2 = p2Addr + CHARACTER_NAME_OFFSET;
+                std::cout << "P2 Char Name Addr: 0x" << charNameAddr2 << "\n";
+                
+                // Force a cache-less read
+                bool originalCache = MemoryReader::IsCacheEnabled();
+                MemoryReader::EnableCache(false);
+                std::string rawName = MemoryReader::ReadString(charNameAddr2, 12);
+                MemoryReader::EnableCache(originalCache);
+                
+                std::cout << "P2 Direct memory read: '" << rawName << "'\n";
+                std::string p2Raw = MemoryReader::GetP2CharacterNameRaw();
+                std::cout << "P2 Raw Name: '" << p2Raw << "'\n";
+                
+                int p2Id = MemoryReader::GetP2CharacterID();
+                std::string p2Name = MemoryReader::GetP2CharacterName();
+                
+                std::cout << "P2 Character ID: " << std::dec << p2Id << "\n";
+                std::cout << "P2 Character Name: " << p2Name << "\n";
+            }
+            
+            std::cout << "--------------------------------\n";
         }
         else if (cmd == "clear") {
             system("cls");

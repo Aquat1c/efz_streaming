@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <unordered_map>
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -104,6 +105,7 @@ bool HttpServer::IsRunning() {
 }
 
 DWORD WINAPI HttpServer::ServerThreadProc(LPVOID lpParam) {
+    // Keep entry log
     LOG_FUNCTION_ENTRY();
     SOCKET listenSocket = INVALID_SOCKET;
     struct sockaddr_in serverAddr;
@@ -161,7 +163,6 @@ DWORD WINAPI HttpServer::ServerThreadProc(LPVOID lpParam) {
         sockaddr_in clientAddr;
         int clientAddrLen = sizeof(clientAddr);
         
-        // Fixed accept() call with proper types
         SOCKET clientSocket = accept(
             listenSocket, 
             reinterpret_cast<sockaddr*>(&clientAddr), 
@@ -169,12 +170,24 @@ DWORD WINAPI HttpServer::ServerThreadProc(LPVOID lpParam) {
         );
         
         if (clientSocket != INVALID_SOCKET) {
-            // Get client IP for logging
-            char clientIP[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &(clientAddr.sin_addr), clientIP, INET_ADDRSTRLEN);
+            // Log connection less frequently
+            static DWORD lastConnectionLogTime = 0;
+            static int connectionsSinceLastLog = 0;
+            DWORD currentTime = GetTickCount();
             
-            Logger::Debug("Accepted connection from " + std::string(clientIP) + 
-                          ":" + std::to_string(ntohs(clientAddr.sin_port)));
+            connectionsSinceLastLog++;
+            if (currentTime - lastConnectionLogTime > 10000) { // Every 10 seconds
+                char clientIP[INET_ADDRSTRLEN];
+                inet_ntop(AF_INET, &(clientAddr.sin_addr), clientIP, INET_ADDRSTRLEN);
+                
+                Logger::Debug("Handled " + std::to_string(connectionsSinceLastLog) + 
+                             " connections in last 10s (latest from " + 
+                             std::string(clientIP) + ":" + 
+                             std::to_string(ntohs(clientAddr.sin_port)) + ")");
+                
+                connectionsSinceLastLog = 0;
+                lastConnectionLogTime = currentTime;
+            }
             
             // Set timeout for client operations
             DWORD timeout = 2000; // 2 seconds
@@ -243,9 +256,12 @@ std::string ReadFile(const std::string& path) {
     );
 }
 
-// Update the HandleRequest function to serve files
+// Update the HandleRequest function to throttle logging
 void HttpServer::HandleRequest(SOCKET clientSocket) {
-    LOG_FUNCTION_ENTRY();
+    // Track these across function calls to throttle request logging
+    static std::unordered_map<std::string, DWORD> lastPathLogTime;
+    static const int PATH_LOG_THROTTLE_MS = 5000; // Only log same path every 5 seconds
+    
     char buffer[2048] = {0};
     int bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
     
@@ -263,7 +279,19 @@ void HttpServer::HandleRequest(SOCKET clientSocket) {
             }
         }
         
-        Logger::Debug("HTTP Request: " + method + " " + path);
+        // Throttle HTTP request logging - only log unique paths or after timeout
+        DWORD currentTime = GetTickCount();
+        bool shouldLog = false;
+        
+        auto it = lastPathLogTime.find(path);
+        if (it == lastPathLogTime.end() || (currentTime - it->second) > PATH_LOG_THROTTLE_MS) {
+            lastPathLogTime[path] = currentTime;
+            shouldLog = true;
+        }
+        
+        if (shouldLog) {
+            Logger::Debug("HTTP Request: " + method + " " + path);
+        }
         
         // Default path handling
         if (path == "/" || path == "/index.html") {
@@ -275,14 +303,12 @@ void HttpServer::HandleRequest(SOCKET clientSocket) {
             std::string jsonData = GameDataManager::GetJSONData();
             std::string response = GenerateHttpResponse(jsonData, "application/json");
             send(clientSocket, response.c_str(), static_cast<int>(response.length()), 0);
-            LOG_FUNCTION_EXIT();
             return;
         }
         else if (path == "/health") {
             std::string jsonData = "{\"status\":\"ok\"}";
             std::string response = GenerateHttpResponse(jsonData, "application/json");
             send(clientSocket, response.c_str(), static_cast<int>(response.length()), 0);
-            LOG_FUNCTION_EXIT();
             return;
         }
         
@@ -305,8 +331,11 @@ void HttpServer::HandleRequest(SOCKET clientSocket) {
                 std::string contentType = GetContentType(path);
                 std::string response = GenerateHttpResponse(fileContent, contentType);
                 send(clientSocket, response.c_str(), static_cast<int>(response.length()), 0);
-                Logger::Debug("Served file: " + normalizedPath.string());
-                LOG_FUNCTION_EXIT();
+                
+                // Only log file served if we're logging this request
+                if (shouldLog) {
+                    Logger::Debug("Served file: " + normalizedPath.string());
+                }
                 return;
             }
         }
@@ -318,30 +347,37 @@ void HttpServer::HandleRequest(SOCKET clientSocket) {
         notFoundResponse += "404 Not Found";
         
         send(clientSocket, notFoundResponse.c_str(), static_cast<int>(notFoundResponse.length()), 0);
+        
+        // Always log file not found errors (important for debugging)
         Logger::Warning("File not found: " + path);
     }
-    
-    LOG_FUNCTION_EXIT();
 }
 
+// Also modify the GenerateHttpResponse to reduce logging
 std::string HttpServer::GenerateHttpResponse(const std::string& content, const std::string& contentType) {
-    LOG_FUNCTION_ENTRY();
+    // No entry/exit logging to reduce console spam
     
     std::ostringstream response;
     
     response << "HTTP/1.1 200 OK\r\n";
     response << "Content-Type: " << contentType << "\r\n";
     response << "Access-Control-Allow-Origin: *\r\n";  // Enable CORS
-    response << "Access-Control-Allow-Methods: GET\r\n"; // Add this line
-    response << "Access-Control-Allow-Headers: Content-Type\r\n"; // Add this line
+    response << "Access-Control-Allow-Methods: GET\r\n";
+    response << "Access-Control-Allow-Headers: Content-Type\r\n";
     response << "Content-Length: " << content.length() << "\r\n";
     response << "Connection: close\r\n";
-    response << "Server: EFZ-Streaming-Overlay/1.0\r\n";  // Add server identifier
+    response << "Server: EFZ-Streaming-Overlay/1.0\r\n";
     response << "\r\n";
     response << content;
     
-    Logger::Debug("Generated HTTP response (" + std::to_string(response.str().length()) + " bytes)");
-    LOG_FUNCTION_EXIT();
+    // Only log the size occasionally using the throttled version
+    static DWORD lastLogTime = 0;
+    DWORD currentTime = GetTickCount();
+    if (currentTime - lastLogTime > 10000) { // Once every 10 seconds
+        Logger::Debug("Generated HTTP response (" + std::to_string(response.str().length()) + " bytes)");
+        lastLogTime = currentTime;
+    }
+    
     return response.str();
 }
 

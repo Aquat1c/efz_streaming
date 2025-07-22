@@ -10,6 +10,7 @@
 #include <string>
 #include <fstream>
 #include <vector>
+#include <unordered_map>
 
 class Logger {
 public:
@@ -45,6 +46,13 @@ public:
     static void EnableMemoryOperationFiltering(bool enable);
     static bool IsMemoryOperationFilteringEnabled();
     
+    // Add these new methods
+    static Level GetMinimumLevel() { return minimumLevel; }
+    static void SetMinimumLevel(Level level) { minimumLevel = level; }
+    
+    // Add throttled logging
+    static void DebugThrottled(const std::string& message, const std::string& category, int throttleMs = 1000);
+    
 private:
     static std::ofstream logFile;
     static bool initialized;
@@ -62,6 +70,9 @@ private:
     
     static std::string GetTimestamp();
     static std::string LevelToString(Level level);
+    
+    // Add support for throttled logging
+    static std::unordered_map<std::string, DWORD> throttledCategories;
 };
 
 #define LOG_FUNCTION_ENTRY() Logger::Debug(std::string(__FUNCTION__) + " - Entry")

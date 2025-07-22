@@ -44,4 +44,10 @@ private:
     static GameData previousData;
     static bool HasDataChanged();
     static void LogChanges();
+
+    // Add these members for caching and throttling
+    static DWORD lastWinCountCheck;
+    static const int WIN_COUNT_CHECK_INTERVAL_MS = 500; // Only check win counts twice per second
+    static DWORD cachedP1WinCount;
+    static DWORD cachedP2WinCount;
 };

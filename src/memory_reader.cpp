@@ -188,7 +188,7 @@ bool MemoryReader::FindEFZProcess() {
     return false;
 }
 
-// In GetModuleHandle method, ensure szModName is the correct type
+// In the GetModuleHandle method, make sure this line is fixed
 HMODULE MemoryReader::GetModuleHandle(const std::string& moduleName) {
     LOG_FUNCTION_ENTRY();
     Logger::Debug("Getting module handle for: " + moduleName);
@@ -223,20 +223,14 @@ HMODULE MemoryReader::GetModuleHandle(const std::string& moduleName) {
 }
 
 bool MemoryReader::ReadMemory(DWORD address, void* buffer, size_t size) {
-    // Remove this debug line that's causing most of the spam
-    //#ifdef VERBOSE_LOGGING
-    //Logger::Debug("Reading " + std::to_string(size) + " bytes from " + Logger::FormatHex(address));
-    //#endif
+    // Remove all debug output from this frequently called method
     
     SIZE_T bytesRead;
     bool result = ReadProcessMemory(hProcess, (LPCVOID)address, buffer, size, &bytesRead) && bytesRead == size;
     
+    // Only log actual errors
     if (!result) {
         LOG_WIN32_ERROR("ReadProcessMemory failed at address " + Logger::FormatHex(address));
-    }
-    
-    // Only log errors, not successful operations
-    if (!result) {
         Logger::LogMemoryOperation(address, "Read", result, size);
     }
     return result;
@@ -269,8 +263,8 @@ std::string MemoryReader::ReadString(DWORD address, size_t maxLength) {
     if (success) {
         result = std::string(buffer);
         
-        // Cache the result
-        if (enableReadCache) {
+        // Only cache non-empty results - THIS IS KEY
+        if (enableReadCache && !result.empty()) {
             stringCache[address] = result;
         }
         
@@ -334,7 +328,13 @@ int MemoryReader::ReadByte(DWORD address) {
 }
 
 DWORD MemoryReader::GetP1WinCount() {
-    LOG_FUNCTION_ENTRY();
+    // Remove these logging lines
+    // LOG_FUNCTION_ENTRY();
+    
+    // Temporarily increase log level for this operation
+    Logger::Level previousLevel = Logger::GetMinimumLevel();
+    Logger::SetMinimumLevel(Logger::LOG_INFO);  // Only log INFO or higher
+    
     DWORD rawWinCount = 0;
     
     // Try again to find the module if not found yet
@@ -347,34 +347,51 @@ DWORD MemoryReader::GetP1WinCount() {
         if (ptrValue != 0) {
             DWORD finalAddr = ptrValue + P1_WIN_COUNT_OFFSET;
             rawWinCount = ReadDWORD(finalAddr);
-            Logger::Debug("Revival P1 Win Count: " + std::to_string(rawWinCount));
+            // Remove or comment out this debug log
+            // Logger::Debug("Revival P1 Win Count: " + std::to_string(rawWinCount));
         }
     }
     
-    LOG_FUNCTION_EXIT();
+    // Restore previous log level
+    Logger::SetMinimumLevel(previousLevel);
+    
+    // Remove this line
+    // LOG_FUNCTION_EXIT();
+    
     return SanitizeWinCount(rawWinCount); // Apply sanitization to the return value
 }
 
 DWORD MemoryReader::GetP2WinCount() {
-    LOG_FUNCTION_ENTRY();
+    // Remove these logging lines
+    // LOG_FUNCTION_ENTRY();
+    
+    // Temporarily increase log level
+    Logger::Level previousLevel = Logger::GetMinimumLevel();
+    Logger::SetMinimumLevel(Logger::LOG_INFO);
+    
     DWORD result = 0;
     
     // Try again to find the module if not found yet
     TryLoadEfzRevivalModule();
     
     if (efzRevivalModule) {
-        // Revival mod uses a different memory structure
         DWORD baseAddr = (DWORD)efzRevivalModule + WIN_COUNT_BASE_OFFSET;
         DWORD ptrValue = ReadDWORD(baseAddr);
         if (ptrValue != 0) {
             DWORD finalAddr = ptrValue + P2_WIN_COUNT_OFFSET;
-            result = ReadByte(finalAddr); // P2 win count is stored as byte in Revival
-            Logger::Debug("Revival P2 Win Count: " + std::to_string(result));
+            result = ReadByte(finalAddr);
+            // Remove or comment out this debug log
+            // Logger::Debug("Revival P2 Win Count: " + std::to_string(result));
         }
     }
     
-    LOG_FUNCTION_EXIT();
-    return result;
+    // Restore previous log level
+    Logger::SetMinimumLevel(previousLevel);
+    
+    // Remove this line
+    // LOG_FUNCTION_EXIT();
+    
+    return SanitizeWinCount(result);
 }
 
 // Add these helper functions for data sanitization
@@ -489,28 +506,111 @@ std::wstring MemoryReader::GetP2Nickname() {
 
 // Replace these functions to use the string values instead of byte IDs
 std::string MemoryReader::GetP1CharacterNameRaw() {
+    // Get base address and read pointer
     DWORD baseAddr = (DWORD)efzModule + EFZ_BASE_OFFSET_P1;
     DWORD p1Addr = ReadDWORD(baseAddr);
-    if (p1Addr == 0) return "";
-    return ReadString(p1Addr + CHARACTER_NAME_OFFSET, 12); // Use the 12-byte string length from CheatTable
+    
+    // Log pointer changes less frequently
+    static DWORD lastP1Addr = 0;
+    if (p1Addr != lastP1Addr) {
+        Logger::Info("P1 base pointer: " + Logger::FormatHex(baseAddr) + 
+                    " -> " + Logger::FormatHex(p1Addr));
+        
+        // Force cache clear when pointer changes - this is important for character selection
+        if (p1Addr != 0 && lastP1Addr == 0) {
+            ClearCache(); // Character was just selected, clear cache
+        }
+        
+        lastP1Addr = p1Addr;
+    }
+    
+    // If pointer is null, characters haven't been selected yet
+    if (p1Addr == 0) {
+        Logger::DebugThrottled("P1 character pointer is null - waiting for character selection", "p1ptr_null", 10000);
+        return "";
+    }
+    
+    // When reading character data during selection, temporarily disable caching
+    static DWORD lastReadTime = GetTickCount();
+    DWORD currentTime = GetTickCount();
+    bool wasCacheEnabled = enableReadCache;
+    
+    // Disable cache for 1 second after pointer change to ensure fresh reads
+    if (currentTime - lastReadTime < 1000) {
+        enableReadCache = false;
+    }
+    
+    // Read character name at pointer + offset
+    std::string charName = ReadString(p1Addr + CHARACTER_NAME_OFFSET, 12);
+    
+    // Restore cache setting
+    enableReadCache = wasCacheEnabled;
+    
+    // Only log changes to avoid spam
+    static std::string lastP1Char = "";
+    if (charName != lastP1Char) {
+        if (!charName.empty()) {
+            Logger::Info("Found P1 raw character name: '" + charName + "'");
+            lastReadTime = currentTime; // Update last read time on character change
+        }
+        lastP1Char = charName;
+    }
+    
+    return charName;
 }
 
 std::string MemoryReader::GetP2CharacterNameRaw() {
     DWORD baseAddr = (DWORD)efzModule + EFZ_BASE_OFFSET_P2;
     DWORD p2Addr = ReadDWORD(baseAddr);
-    if (p2Addr == 0) return "";
-    return ReadString(p2Addr + CHARACTER_NAME_OFFSET, 12); // Use the 12-byte string length from CheatTable
+    
+    static DWORD lastP2Addr = 0;
+    if (p2Addr != lastP2Addr) {
+        Logger::Info("P2 base pointer: " + Logger::FormatHex(baseAddr) + 
+                    " -> " + Logger::FormatHex(p2Addr));
+        lastP2Addr = p2Addr;
+    }
+    
+    if (p2Addr == 0) {
+        Logger::DebugThrottled("P2 character pointer is null - waiting for character selection", "p2ptr_null", 10000);
+        return "";
+    }
+    
+    static std::string lastP2Char = "";
+    std::string charName = ReadString(p2Addr + CHARACTER_NAME_OFFSET, 12);
+    
+    if (charName != lastP2Char) {
+        if (!charName.empty()) {
+            Logger::Info("Found P2 raw character name: '" + charName + "'");
+        }
+        lastP2Char = charName;
+    }
+    
+    return charName;
 }
 
-// Replace the MapRawCharacterNameToID function with this version
+// Optimize MapRawCharacterNameToID to avoid repetitive logging
 int MemoryReader::MapRawCharacterNameToID(const std::string& rawName) {
-    // Don't log every mapping attempt
-    static std::string lastRawName;
-    static int lastResult = -1;
+    // Don't process empty names
+    if (rawName.empty()) {
+        return -1;
+    }
     
-    // Make sure to also handle partial names and variations
+    // Track only one instance of the character name per session
+    static std::unordered_map<std::string, int> sessionNameCache;
+    
+    // Check session cache first for super-fast lookups
+    auto cacheIt = sessionNameCache.find(rawName);
+    if (cacheIt != sessionNameCache.end()) {
+        return cacheIt->second;
+    }
+    
+    // Convert to uppercase for case-insensitive comparison
+    std::string upperName = rawName;
+    std::transform(upperName.begin(), upperName.end(), upperName.begin(), 
+                   [](unsigned char c) -> unsigned char { return static_cast<unsigned char>(std::toupper(c)); });
+    
+    // Define mapping from character names to IDs
     static const std::map<std::string, int> nameToIdMap = {
-        // Keep existing mappings
         {"AKANE", CHAR_ID_AKANE},
         {"AKIKO", CHAR_ID_AKIKO},
         {"IKUMI", CHAR_ID_IKUMI},
@@ -534,39 +634,8 @@ int MemoryReader::MapRawCharacterNameToID(const std::string& rawName) {
         {"MAI", CHAR_ID_MAI},
         {"MAYU", CHAR_ID_MAYU},
         {"MIZUKAB", CHAR_ID_MIZUKAB},
-        {"KANO", CHAR_ID_KANO},
-        
-        // Common variations (partial name detection)
-        {"AKANE_", CHAR_ID_AKANE},
-        {"AKIKO_", CHAR_ID_AKIKO},
-        {"IKUMI_", CHAR_ID_IKUMI},
-        {"MISAKI_", CHAR_ID_MISAKI},
-        {"SAYURI_", CHAR_ID_SAYURI},
-        {"KANNA_", CHAR_ID_KANNA},
-        {"KAORI_", CHAR_ID_KAORI},
-        {"MAKOTO_", CHAR_ID_MAKOTO},
-        {"MINAGI_", CHAR_ID_MINAGI},
-        {"MIO_", CHAR_ID_MIO},
-        {"MISHIO_", CHAR_ID_MISHIO},
-        {"MISUZU_", CHAR_ID_MISUZU},
-        {"MIZUKA_", CHAR_ID_MIZUKA},
-        {"NAGAMORI_", CHAR_ID_NAGAMORI},
-        {"NANASE_", CHAR_ID_NANASE},
-        {"EXNANASE_", CHAR_ID_EXNANASE},
-        {"NAYUKI_", CHAR_ID_NAYUKI},
-        {"NAYUKIB_", CHAR_ID_NAYUKIB},
-        {"SHIORI_", CHAR_ID_SHIORI},
-        {"AYU_", CHAR_ID_AYU},
-        {"MAI_", CHAR_ID_MAI},
-        {"MAYU_", CHAR_ID_MAYU},
-        {"MIZUKAB_", CHAR_ID_MIZUKAB},
-        {"KANO_", CHAR_ID_KANO}
+        {"KANO", CHAR_ID_KANO}
     };
-    
-    // Convert to uppercase for case-insensitive comparison
-    std::string upperName = rawName;
-    std::transform(upperName.begin(), upperName.end(), upperName.begin(), 
-                   [](unsigned char c){ return static_cast<char>(std::toupper(c)); });
     
     // First try exact match
     auto it = nameToIdMap.find(upperName);
@@ -575,7 +644,7 @@ int MemoryReader::MapRawCharacterNameToID(const std::string& rawName) {
     if (it != nameToIdMap.end()) {
         result = it->second;
     } else {
-        // If no exact match, try to find if the name starts with any of our keys
+        // If no exact match, try prefix match
         for (const auto& pair : nameToIdMap) {
             if (upperName.find(pair.first) == 0) {
                 result = pair.second;
@@ -584,19 +653,16 @@ int MemoryReader::MapRawCharacterNameToID(const std::string& rawName) {
         }
     }
     
-    // Only log when the result changes
-    if (rawName != lastRawName || result != lastResult) {
-        if (result >= 0) {
-            Logger::Info("Character detected: '" + rawName + "' -> ID " + std::to_string(result) +
-                        " (" + GetCharacterNameFromID(result) + ")");
-        } else {
-            Logger::Warning("Unknown character name: '" + rawName + "'");
-        }
-        
-        // Update saved state
-        lastRawName = rawName;
-        lastResult = result;
+    // Log only the first time we see this character name
+    if (result >= 0) {
+        Logger::Info("Character detected: '" + rawName + "' -> ID " + std::to_string(result) +
+                    " (" + GetCharacterNameFromID(result) + ")");
+    } else {
+        Logger::Warning("Unknown character name: '" + rawName + "'");
     }
+    
+    // Store in the session cache
+    sessionNameCache[rawName] = result;
     
     return result;
 }
@@ -663,4 +729,37 @@ std::string MemoryReader::GetP1CharacterName() {
 std::string MemoryReader::GetP2CharacterName() {
     int characterId = GetP2CharacterID();
     return GetCharacterNameFromID(characterId);
+}
+
+std::wstring MemoryReader::ReadWideString(DWORD address, size_t maxLength) {
+    // Check if we need to clear cache (every 5 seconds)
+    DWORD currentTime = GetTickCount();
+    if (currentTime - lastCacheClearTime > CACHE_CLEAR_INTERVAL_MS) {
+        ClearCache();
+        lastCacheClearTime = currentTime;
+    }
+    
+    // Not using cache for wide strings yet to keep it simple
+    
+    // Read from memory
+    wchar_t* buffer = new wchar_t[maxLength + 1];
+    memset(buffer, 0, sizeof(wchar_t) * (maxLength + 1));
+    
+    bool success = ReadMemory(address, buffer, maxLength * sizeof(wchar_t));
+    
+    std::wstring result;
+    if (success) {
+        result = std::wstring(buffer);
+        
+        // Only log non-empty strings
+        if (!result.empty()) {
+            // For logging, just note that we read a wide string and its length
+            // This avoids needing codecvt conversion for logging
+            Logger::Debug("Reading wide string at " + Logger::FormatHex(address) + 
+                " (length: " + std::to_string(result.length()) + " chars)");
+        }
+    }
+    
+    delete[] buffer;
+    return result;
 }

@@ -5,6 +5,7 @@
 #include <ctime>
 #include <windows.h>
 #include <algorithm>
+#include <unordered_map>
 
 std::ofstream Logger::logFile;
 bool Logger::initialized = false;
@@ -20,6 +21,9 @@ DWORD Logger::lastLogTick = 0;
 int Logger::memoryOperationsCount = 0;
 const int Logger::MEMORY_LOGS_REPORT_THRESHOLD = 100;
 const int Logger::LOG_SUMMARY_INTERVAL_MS = 5000;
+
+// Initialize static member
+std::unordered_map<std::string, DWORD> Logger::throttledCategories;
 
 void Logger::Initialize(const std::string& filename, Level minLevel, bool enableConsole) {
     minimumLevel = minLevel;
@@ -355,4 +359,27 @@ std::string Logger::LevelToString(Level level) {
         case LOG_CRITICAL: return "CRIT ";
         default: return "UNKWN";
     }
+}
+
+// Add throttled debug logging
+void Logger::DebugThrottled(const std::string& message, const std::string& category, int throttleMs) {
+    DWORD currentTime = GetTickCount();
+    
+    // Check if this category should be throttled
+    auto it = throttledCategories.find(category);
+    if (it != throttledCategories.end()) {
+        // Category exists, check if enough time has passed
+        if (currentTime - it->second < (DWORD)throttleMs) {
+            // Not enough time has passed, skip this log
+            return;
+        }
+        // Update the last log time for this category
+        it->second = currentTime;
+    } else {
+        // First time seeing this category, add it
+        throttledCategories[category] = currentTime;
+    }
+    
+    // Actually log the message
+    Debug(message);
 }

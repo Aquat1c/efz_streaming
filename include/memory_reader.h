@@ -32,6 +32,16 @@ public:
     static std::string GetP2CharacterName();
     static std::string GetP1CharacterNameRaw();  // Add this
     static std::string GetP2CharacterNameRaw();  // Add this
+    static HMODULE GetEFZModuleAddress() { return efzModule; } // Add this accessor for the debug command
+    
+    // Add this new method
+    static void ForceRefreshCharacterData() {
+        ClearCache();  // Clear entire cache
+    }
+    
+    // Add these methods
+    static bool IsCacheEnabled() { return enableReadCache; }
+    static void EnableCache(bool enable) { enableReadCache = enable; }
     
 private:
     static bool FindEFZProcess();
