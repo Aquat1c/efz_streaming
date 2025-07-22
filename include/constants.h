@@ -15,6 +15,12 @@
 #define P1_NICKNAME_OFFSET 0x3BE
 #define P2_NICKNAME_OFFSET 0x43E
 
+// Spectator mode offsets from EfzRevival.dll+A02CC
+#define P1_WIN_COUNT_OFFSET_SPECTATOR 0x80
+#define P2_WIN_COUNT_OFFSET_SPECTATOR 0x84
+#define P1_NICKNAME_OFFSET_SPECTATOR 0x9A
+#define P2_NICKNAME_OFFSET_SPECTATOR 0x11A
+
 // Character IDs - corrected to match internal game IDs
 #define CHAR_ID_AKANE     0
 #define CHAR_ID_AKIKO     1
@@ -47,6 +53,14 @@ static const char* CHARACTER_NAMES[] = {
     "Kaori", "Makoto", "Minagi", "Mio", "Mishio", "Misuzu",
     "Mizuka", "Nagamori", "Nanase", "ExNanase", "Nayuki", "NayukiB",
     "Shiori", "Ayu", "Mai", "Mayu", "MizukaB", "Kano"
+};
+
+// Add this array for portrait filenames
+static const char* CHARACTER_PORTRAITS[] = {
+    "akane.png", "akiko.png", "ikumi.png", "misaki.png", "sayuri.png", "kanna.png",
+    "kaori.png", "makoto.png", "minagi.png", "mio.png", "mishio.png", "misuzu.png",
+    "mizuka.png", "nagamori.png", "nanase.png", "exnanase.png", "nayuki.png", "nayukib.png",
+    "shiori.png", "ayu.png", "mai.png", "mayu.png", "mizukab.png", "kano.png"
 };
 
 #define MAX_CHARACTER_ID 23

@@ -7,10 +7,8 @@
 #include <algorithm>
 #include <unordered_map>
 
-std::ofstream Logger::logFile;
 bool Logger::initialized = false;
 Logger::Level Logger::minimumLevel = Logger::LOG_DEBUG;
-std::string Logger::logFilePath;
 std::vector<std::string> Logger::pendingMessages;
 bool Logger::consoleAttached = false;
 HWND Logger::consoleWindow = nullptr;
@@ -27,42 +25,24 @@ std::unordered_map<std::string, DWORD> Logger::throttledCategories;
 
 void Logger::Initialize(const std::string& filename, Level minLevel, bool enableConsole) {
     minimumLevel = minLevel;
-    logFilePath = filename;
     
     // Create console window if requested
     if (enableConsole) {
         CreateConsole();
     }
     
-    // Open log file with timestamp in name for debugging purposes
-    try {
-        logFile.open(filename, std::ios::out | std::ios::app);
-        if (logFile.is_open()) {
-            initialized = true;
+    initialized = true;
             
-            // Print any messages that were logged before initialization
-            for (const auto& msg : pendingMessages) {
-                logFile << msg << std::endl;
-                if (consoleAttached) {
-                    std::cout << msg << std::endl;
-                }
-            }
-            pendingMessages.clear();
-            
-            Info("-------------- Logger initialized --------------");
-            LogSystemInfo();
-        }
-        else {
-            if (consoleAttached) {
-                std::cerr << "Failed to open log file: " << filename << std::endl;
-            }
-        }
-    }
-    catch (const std::exception& e) {
+    // Print any messages that were logged before initialization
+    for (const auto& msg : pendingMessages) {
         if (consoleAttached) {
-            std::cerr << "Exception in logger initialization: " << e.what() << std::endl;
+            std::cout << msg << std::endl;
         }
     }
+    pendingMessages.clear();
+    
+    Info("-------------- Logger initialized --------------");
+    LogSystemInfo();
 }
 
 bool Logger::CreateConsole() {
@@ -190,11 +170,6 @@ void Logger::Log(Level level, const std::string& message) {
             std::cout << logMessage << std::endl;
         }
         return;
-    }
-    
-    if (logFile.is_open()) {
-        logFile << logMessage << std::endl;
-        logFile.flush();
     }
     
     // Also output to console for debugging
@@ -329,9 +304,8 @@ std::string Logger::FormatHex(DWORD value) {
 }
 
 void Logger::Shutdown() {
-    if (initialized && logFile.is_open()) {
+    if (initialized) {
         Info("-------------- Logger shutting down --------------");
-        logFile.close();
         initialized = false;
     }
     

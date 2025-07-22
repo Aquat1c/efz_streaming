@@ -184,7 +184,12 @@ bool MemoryReader::FindEFZProcess() {
     
     Logger::Error("EFZ process not found");
     CloseHandle(hProcessSnap);
-    LOG_FUNCTION_EXIT();
+    
+    #ifdef _DEBUG
+    std::wstring criticalMessage = L"Critical Error: Failed to find EFZ process after multiple attempts. Overlay will not function.";
+    MessageBoxW(NULL, criticalMessage.c_str(), L"Critical Error", MB_ICONERROR | MB_OK);
+    #endif
+    
     return false;
 }
 
@@ -345,10 +350,16 @@ DWORD MemoryReader::GetP1WinCount() {
         DWORD baseAddr = (DWORD)efzRevivalModule + WIN_COUNT_BASE_OFFSET;
         DWORD ptrValue = ReadDWORD(baseAddr);
         if (ptrValue != 0) {
-            DWORD finalAddr = ptrValue + P1_WIN_COUNT_OFFSET;
-            rawWinCount = ReadDWORD(finalAddr);
-            // Remove or comment out this debug log
-            // Logger::Debug("Revival P1 Win Count: " + std::to_string(rawWinCount));
+            // Try player offset first
+            rawWinCount = ReadDWORD(ptrValue + P1_WIN_COUNT_OFFSET);
+
+            // If player win count is suspicious, try spectator offset
+            if (rawWinCount > 99) {
+                DWORD spectatorWinCount = ReadDWORD(ptrValue + P1_WIN_COUNT_OFFSET_SPECTATOR);
+                if (spectatorWinCount <= 99) {
+                    rawWinCount = spectatorWinCount;
+                }
+            }
         }
     }
     
@@ -378,10 +389,16 @@ DWORD MemoryReader::GetP2WinCount() {
         DWORD baseAddr = (DWORD)efzRevivalModule + WIN_COUNT_BASE_OFFSET;
         DWORD ptrValue = ReadDWORD(baseAddr);
         if (ptrValue != 0) {
-            DWORD finalAddr = ptrValue + P2_WIN_COUNT_OFFSET;
-            result = ReadByte(finalAddr);
-            // Remove or comment out this debug log
-            // Logger::Debug("Revival P2 Win Count: " + std::to_string(result));
+            // Try player offset first
+            result = ReadDWORD(ptrValue + P2_WIN_COUNT_OFFSET);
+
+            // If player win count is suspicious, try spectator offset
+            if (result > 99) {
+                DWORD spectatorWinCount = ReadDWORD(ptrValue + P2_WIN_COUNT_OFFSET_SPECTATOR);
+                if (spectatorWinCount <= 99) {
+                    result = spectatorWinCount;
+                }
+            }
         }
     }
     
@@ -473,8 +490,16 @@ std::wstring MemoryReader::GetP1Nickname() {
         DWORD baseAddr = (DWORD)efzRevivalModule + WIN_COUNT_BASE_OFFSET;
         DWORD ptrValue = ReadDWORD(baseAddr);
         if (ptrValue != 0) {
-            DWORD finalAddr = ptrValue + P1_NICKNAME_OFFSET;
-            rawNickname = ReadWideString(finalAddr, MAX_NICKNAME_LENGTH);
+            // Try player offset first
+            rawNickname = ReadWideString(ptrValue + P1_NICKNAME_OFFSET, MAX_NICKNAME_LENGTH);
+
+            // If the nickname is empty or default, try the spectator offset
+            if (rawNickname.empty() || rawNickname == L"Player 1") {
+                std::wstring specNickname = ReadWideString(ptrValue + P1_NICKNAME_OFFSET_SPECTATOR, MAX_NICKNAME_LENGTH);
+                if (!specNickname.empty()) {
+                    rawNickname = specNickname;
+                }
+            }
         }
     }
     
@@ -492,8 +517,16 @@ std::wstring MemoryReader::GetP2Nickname() {
         DWORD baseAddr = (DWORD)efzRevivalModule + WIN_COUNT_BASE_OFFSET;
         DWORD ptrValue = ReadDWORD(baseAddr);
         if (ptrValue != 0) {
-            DWORD finalAddr = ptrValue + P2_NICKNAME_OFFSET;
-            result = ReadWideString(finalAddr, MAX_NICKNAME_LENGTH);
+            // Try player offset first
+            result = ReadWideString(ptrValue + P2_NICKNAME_OFFSET, MAX_NICKNAME_LENGTH);
+
+            // If the nickname is empty or default, try the spectator offset
+            if (result.empty() || result == L"Player 2") {
+                std::wstring specNickname = ReadWideString(ptrValue + P2_NICKNAME_OFFSET_SPECTATOR, MAX_NICKNAME_LENGTH);
+                if (!specNickname.empty()) {
+                    result = specNickname;
+                }
+            }
         }
     } 
     // If empty or failed to read, use a default
@@ -762,4 +795,23 @@ std::wstring MemoryReader::ReadWideString(DWORD address, size_t maxLength) {
     
     delete[] buffer;
     return result;
+}
+
+// Helper to read a single value from memory with caching
+template<typename T>
+T MemoryReader::ReadValue(DWORD address) {
+    if (enableReadCache) {
+        auto it = dwordCache.find(address);
+        if (it != dwordCache.end()) {
+            return *reinterpret_cast<T*>(&it->second);
+        }
+    }
+    
+    T value = {};
+    if (ReadMemory(address, &value, sizeof(T))) {
+        if (enableReadCache) {
+            dwordCache[address] = *reinterpret_cast<DWORD*>(&value);
+        }
+    }
+    return value;
 }

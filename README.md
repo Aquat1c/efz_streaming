@@ -1,83 +1,121 @@
 # EFZ Streaming Overlay
 
-A DLL mod for Eternal Fighter Zero that provides real-time game data for OBS streaming overlays.
+A lightweight DLL mod for Eternal Fighter Zero that provides real-time game data for OBS streaming overlays through a simple, file-based system.
+
+This mod reads game data directly from memory and outputs it to local files, allowing for a robust, high-performance overlay with no need for web browsers or complex setup.
 
 ## Features
 
-- Reads player win counts, nicknames, and character information from game memory
-- Provides data via HTTP server (localhost:8080) for web-based overlays
-- Exports individual text files for OBS text sources
-- Includes a sample HTML overlay template
-
-## Memory Addresses
-
-The mod reads the following data from the game:
-- **Win Counts**: EfzRevival.dll+A02CC with offsets 0x4C8 (P1) and 0x4CC (P2)
-- **Nicknames**: EfzRevival.dll+A02CC with offsets 0x3BE (P1) and 0x43E (P2) 
-- **Characters**: [[efz.exe + 0x390104] + 0x94] (P1) and [[efz.exe + 0x390108] + 0x94] (P2)
+- Reads player win counts, nicknames, and character information directly from game memory.
+- Supports both player and spectator modes by automatically detecting the correct memory offsets.
+- Exports data to individual text files for easy integration with OBS Text Sources.
+- Dynamically updates character portrait images for use with OBS Image Sources.
+- Automatically creates and cleans up generated files on exit, keeping your game directory tidy.
+- Provides a real-time console for logging and diagnostics.
 
 ## Building
 
-Requirements:
+### Requirements
 - Visual Studio 2019 or later
 - CMake 3.10+
-- Detours library (place in 3rdparty/detours/)
+- [Microsoft Detours](https://github.com/microsoft/detours) library (place in `3rdparty/detours/`)
 
+### Build Steps
 ```bash
+# Create a build directory
 mkdir build
 cd build
+
+# Generate project files for 32-bit
 cmake -A Win32 ..
+
+# Build the Release configuration
 cmake --build . --config Release
 ```
+The final DLL will be located in `build/bin/Release/efz_streaming_overlay.dll`.
 
 ## Usage
 
-1. Inject the built DLL into the EFZ process using your preferred DLL injector
-2. The mod will automatically start an HTTP server on port 8080
-3. Game data will be written to `overlay_data/` folder next to the game executable
-4. Use the provided HTML overlay or access JSON data at `http://localhost:8080`
+1.  **Inject the DLL**: Use your preferred DLL injector to inject the `efz_streaming_overlay.dll` into the `efz.exe` process after the game has started.
+2.  **Asset Folder**: The mod will automatically create an `overlay_assets` folder in the same directory as the DLL.
+3.  **Add Portraits**: Inside `overlay_assets`, you will find a `portraits` folder. You must place your character portrait images (as `.png` files) in this folder. See the **Character Portraits** section below for the required filenames.
 
-## OBS Integration
+## OBS Integration (Recommended Method)
 
-### Method 1: Web Source
-Add a Browser Source in OBS pointing to the generated `overlay_data/overlay.html` file.
+This setup uses native OBS sources for the best performance and stability.
 
-### Method 2: Text Sources
-Add Text Sources in OBS reading from individual files:
-- `overlay_data/p1_nickname.txt`
-- `overlay_data/p2_nickname.txt`  
-- `overlay_data/p1_character.txt`
-- `overlay_data/p2_character.txt`
-- `overlay_data/p1_wins.txt`
-- `overlay_data/p2_wins.txt`
+### 1. Text Sources (Nicknames, Wins, etc.)
+For each piece of text you want to display:
+1.  In OBS, add a new **Text (GDI+)** source.
+2.  In the source properties, check the box for **Read from file**.
+3.  Click **Browse** and select the corresponding text file from the `overlay_assets` directory (e.g., `p1_nickname.txt`).
+4.  Style the font, color, and size as desired within OBS.
 
-### Method 3: Custom Web Source
-Create your own web overlay that fetches JSON data from `http://localhost:8080`
+The available text files are:
+- `p1_nickname.txt` / `p2_nickname.txt`
+- `p1_character.txt` / `p2_character.txt`
+- `p1_wins.txt` / `p2_wins.txt`
 
-## Data Format
+### 2. Image Sources (Character Portraits)
+1.  In OBS, add a new **Image** source for Player 1.
+2.  Click **Browse** and select the `p1_portrait.png` file from the `overlay_assets` directory.
+3.  Repeat for Player 2, adding another **Image** source and selecting `p2_portrait.png`.
 
-JSON response format:
-```json
-{
-  "player1": {
-    "nickname": "Player1",
-    "character": "Akane", 
-    "characterId": 0,
-    "winCount": 2
-  },
-  "player2": {
-    "nickname": "Player2",
-    "character": "Sayuri",
-    "characterId": 4, 
-    "winCount": 1
-  },
-  "gameActive": true
-}
-```
+The mod will automatically update these two image files when players select their characters, and OBS will display the changes instantly.
 
-## Character IDs
+## Character Portraits
 
-- 0: Akane, 1: Akiko, 2: Ikumi, 3: Misaki, 4: Sayuri, 5: Kanna
-- 6: Kaori, 7: Makoto, 8: Minagi, 9: Mio, 10: Mishio, 11: Misuzu
-- 12: Mizuka, 13: Nagamori, 14: Nanase, 15: ExNanase, 16: Nayuki, 17: NayukiB  
-- 18: Shiori, 19: Ayu, 20: Mai, 21: Mayu, 22: MizukaB, 23: Kano
+For the portrait hot-swapping to work, you must provide `.png` files in the `overlay_assets/portraits/` directory with the following exact filenames:
+
+- `akane.png`
+- `akiko.png`
+- `ikumi.png`
+- `misaki.png`
+- `sayuri.png`
+- `kanna.png`
+- `kaori.png`
+- `makoto.png`
+- `minagi.png`
+- `mio.png`
+- `mishio.png`
+- `misuzu.png`
+- `mizuka.png`
+- `nagamori.png`
+- `nanase.png`
+- `exnanase.png`
+- `nayuki.png`
+- `nayukib.png`
+- `shiori.png`
+- `ayu.png`
+- `mai.png`
+- `mayu.png`
+- `mizukab.png`
+- `kano.png`
+
+Also you can include an `unknown.png` file, which will be used as a default if a character's portrait is not found.
+
+## Troubleshooting
+
+- **Console Errors**: If you encounter issues, run the game in windowed mode and check the console output for error messages.
+- **Performance**: For best performance, close any unnecessary background applications and ensure your antivirus is not interfering with the DLL injection.
+- **OBS Issues**: Make sure you are using the latest version of OBS, and try running OBS as an administrator.
+
+## Changelog
+
+### v1.0
+- Initial release with core features: memory reading, file output, OBS integration.
+
+### v1.1
+- Added support for spectator mode.
+- Improved file handling and cleanup.
+- Enhanced error logging and diagnostics.
+
+### v1.2
+- Added character portrait hot-swapping feature.
+- Optimized memory reading performance.
+- Fixed various bugs and improved stability.
+
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

@@ -54,10 +54,8 @@ public:
     static void DebugThrottled(const std::string& message, const std::string& category, int throttleMs = 1000);
     
 private:
-    static std::ofstream logFile;
     static bool initialized;
     static Level minimumLevel;
-    static std::string logFilePath;
     static std::vector<std::string> pendingMessages;
     static bool consoleAttached;
     static HWND consoleWindow;

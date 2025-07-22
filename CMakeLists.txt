@@ -53,7 +53,6 @@ set(SOURCES
     src/dllmain.cpp
     src/memory_reader.cpp
     src/game_data.cpp
-    src/http_server.cpp
     src/overlay_data.cpp
     src/logger.cpp
 )
@@ -74,12 +73,10 @@ target_include_directories(efz_streaming_overlay PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/detours/include
 )
 
-# Link required libraries including network libraries and Detours
+# Link required libraries
 target_link_libraries(efz_streaming_overlay PRIVATE 
     user32 
     kernel32
-    ws2_32
-    winhttp
     psapi
     ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/detours/lib.X86/detours.lib
 )

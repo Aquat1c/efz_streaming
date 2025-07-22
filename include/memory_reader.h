@@ -43,6 +43,10 @@ public:
     static bool IsCacheEnabled() { return enableReadCache; }
     static void EnableCache(bool enable) { enableReadCache = enable; }
     
+    // Add this template function
+    template<typename T>
+    static T ReadValue(DWORD address);
+
 private:
     static bool FindEFZProcess();
     static HMODULE GetModuleHandle(const std::string& moduleName);

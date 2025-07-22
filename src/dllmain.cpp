@@ -1,10 +1,9 @@
 #include <windows.h>
 #include "../include/memory_reader.h"
 #include "../include/game_data.h"
-#include "../include/http_server.h"
 #include "../include/overlay_data.h"
 #include "../include/logger.h"
-#include "../include/constants.h"  // Add this include for the constant definitions
+#include "../include/constants.h"
 #include <thread>
 #include <string>
 #include <sstream>
@@ -60,15 +59,6 @@ bool InitializeComponents() {
         return false;
     }
     
-    // Initialize HTTP server last
-    if (!HttpServer::Initialize(8080)) {
-        Logger::Error("Failed to initialize HTTP server - aborting");
-        OverlayData::Shutdown();
-        GameDataManager::Shutdown();
-        MemoryReader::Shutdown();
-        return false;
-    }
-    
     Logger::Info("All components initialized successfully");
     return true;
 }
@@ -88,7 +78,6 @@ void CleanupComponents() {
     }
     
     // Clean up in reverse order of initialization
-    HttpServer::Shutdown();
     OverlayData::Shutdown();
     GameDataManager::Shutdown();
     MemoryReader::Shutdown(); // This will also stop the module watcher thread
