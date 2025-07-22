@@ -7,12 +7,20 @@
 #include <thread>
 #include <map>
 #include <algorithm>
+#include <unordered_map>
 HANDLE MemoryReader::hProcess = nullptr;
 DWORD MemoryReader::processId = 0;
 HMODULE MemoryReader::efzModule = nullptr;
 HMODULE MemoryReader::efzRevivalModule = nullptr;
 HANDLE MemoryReader::moduleWatcherThread = nullptr;
 std::atomic<bool> MemoryReader::watcherRunning(false);
+
+// Initialize static cache variables
+std::unordered_map<DWORD, std::string> MemoryReader::stringCache;
+std::unordered_map<DWORD, int> MemoryReader::byteCache;
+std::unordered_map<DWORD, DWORD> MemoryReader::dwordCache;
+bool MemoryReader::enableReadCache = true;
+DWORD MemoryReader::lastCacheClearTime = 0;
 
 bool MemoryReader::Initialize() {
     LOG_FUNCTION_ENTRY();
@@ -234,43 +242,24 @@ bool MemoryReader::ReadMemory(DWORD address, void* buffer, size_t size) {
     return result;
 }
 
-DWORD MemoryReader::ReadDWORD(DWORD address) {
-    DWORD value = 0;
-    if (ReadMemory(address, &value, sizeof(DWORD))) {
-        // Remove verbose logging of every DWORD read
-        //Logger::Debug("ReadDWORD at " + Logger::FormatHex(address) + " = " + Logger::FormatHex(value));
-    }
-    return value;
-}
-
-std::wstring MemoryReader::ReadWideString(DWORD address, size_t maxLength) {
-    Logger::Debug("Reading wide string at " + Logger::FormatHex(address) + " (max length: " + std::to_string(maxLength) + ")");
-    
-    wchar_t* buffer = new wchar_t[maxLength + 1];
-    memset(buffer, 0, (maxLength + 1) * sizeof(wchar_t));
-    
-    bool success = ReadMemory(address, buffer, maxLength * sizeof(wchar_t));
-    
-    std::wstring result;
-    if (success) {
-        result = std::wstring(buffer);
-        
-        // Convert to narrow for logging
-        std::string narrowStr;
-        for (size_t i = 0; i < result.length(); i++) {
-            narrowStr += static_cast<char>(result[i] & 0xFF);
-        }
-        Logger::Debug("String value: " + narrowStr);
-    }
-    
-    delete[] buffer;
-    return result;
-}
-
-// Add this function to read string data from memory
+// Modified ReadString method to use cache
 std::string MemoryReader::ReadString(DWORD address, size_t maxLength) {
-    Logger::Debug("Reading string at " + Logger::FormatHex(address) + " (max length: " + std::to_string(maxLength) + ")");
+    // Check if we need to clear cache (every 5 seconds)
+    DWORD currentTime = GetTickCount();
+    if (currentTime - lastCacheClearTime > CACHE_CLEAR_INTERVAL_MS) {
+        ClearCache();
+        lastCacheClearTime = currentTime;
+    }
     
+    // Check cache first if enabled
+    if (enableReadCache) {
+        auto it = stringCache.find(address);
+        if (it != stringCache.end()) {
+            return it->second;
+        }
+    }
+    
+    // Not in cache, read from memory
     char* buffer = new char[maxLength + 1];
     memset(buffer, 0, maxLength + 1);
     
@@ -279,18 +268,67 @@ std::string MemoryReader::ReadString(DWORD address, size_t maxLength) {
     std::string result;
     if (success) {
         result = std::string(buffer);
-        Logger::Debug("String value: " + result);
+        
+        // Cache the result
+        if (enableReadCache) {
+            stringCache[address] = result;
+        }
+        
+        // Only log non-empty strings that we haven't seen before
+        if (!result.empty()) {
+            static std::string lastNonEmptyString;
+            static DWORD lastStringAddress = 0;
+            
+            if (result != lastNonEmptyString || address != lastStringAddress) {
+                Logger::Debug("Reading string at " + Logger::FormatHex(address) + ": '" + result + "'");
+                lastNonEmptyString = result;
+                lastStringAddress = address;
+            }
+        }
     }
     
     delete[] buffer;
     return result;
 }
 
+// Add cache clearing function
+void MemoryReader::ClearCache() {
+    stringCache.clear();
+    byteCache.clear();
+    dwordCache.clear();
+    Logger::Debug("Memory read cache cleared");
+}
+
+DWORD MemoryReader::ReadDWORD(DWORD address) {
+    if (enableReadCache) {
+        auto it = dwordCache.find(address);
+        if (it != dwordCache.end()) {
+            return it->second;
+        }
+    }
+    
+    DWORD value = 0;
+    if (ReadMemory(address, &value, sizeof(DWORD))) {
+        if (enableReadCache) {
+            dwordCache[address] = value;
+        }
+    }
+    return value;
+}
+
 int MemoryReader::ReadByte(DWORD address) {
+    if (enableReadCache) {
+        auto it = byteCache.find(address);
+        if (it != byteCache.end()) {
+            return it->second;
+        }
+    }
+    
     BYTE value = 0;
     if (ReadMemory(address, &value, sizeof(BYTE))) {
-        // Remove verbose logging of every byte read
-        //Logger::Debug("ReadByte at " + Logger::FormatHex(address) + " = " + std::to_string((int)value));
+        if (enableReadCache) {
+            byteCache[address] = (int)value;
+        }
     }
     return (int)value;
 }
@@ -600,17 +638,17 @@ std::string MemoryReader::GetCharacterNameFromID(int id) {
         case CHAR_ID_MIO: return "Mio";
         case CHAR_ID_MISHIO: return "Mishio";
         case CHAR_ID_MISUZU: return "Misuzu";
-        case CHAR_ID_MIZUKA: return "Mizuka";
-        case CHAR_ID_NAGAMORI: return "Nagamori";
-        case CHAR_ID_NANASE: return "Nanase";
-        case CHAR_ID_EXNANASE: return "Ex Nanase";
-        case CHAR_ID_NAYUKI: return "Nayuki";
-        case CHAR_ID_NAYUKIB: return "Nayuki B";
+        case CHAR_ID_MIZUKA: return "UNKNOWN?!";
+        case CHAR_ID_NAGAMORI: return "Mizuka";
+        case CHAR_ID_NANASE: return "Rumi";
+        case CHAR_ID_EXNANASE: return "Doppel Nanase";
+        case CHAR_ID_NAYUKI: return "Nayuki(Asleep)";
+        case CHAR_ID_NAYUKIB: return "Nayuki(Awake)";
         case CHAR_ID_SHIORI: return "Shiori";
         case CHAR_ID_AYU: return "Ayu";
         case CHAR_ID_MAI: return "Mai";
         case CHAR_ID_MAYU: return "Mayu";
-        case CHAR_ID_MIZUKAB: return "Mizuka B";
+        case CHAR_ID_MIZUKAB: return "UNKNOWN";
         case CHAR_ID_KANO: return "Kano";
         default: return "Undefined";
     }

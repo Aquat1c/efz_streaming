@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <string>
 #include <atomic>
+#include <unordered_map>
 
 class MemoryReader {
 public:
@@ -50,4 +51,15 @@ private:
     static HANDLE moduleWatcherThread;
     static std::atomic<bool> watcherRunning;
     static const int MODULE_CHECK_INTERVAL_MS = 1000;
+
+    // Add cache for memory reads to reduce repeated logs
+    static std::unordered_map<DWORD, std::string> stringCache;
+    static std::unordered_map<DWORD, int> byteCache;
+    static std::unordered_map<DWORD, DWORD> dwordCache;
+    static bool enableReadCache;
+    
+    // Helper for cache management
+    static void ClearCache();
+    static const int CACHE_CLEAR_INTERVAL_MS = 5000; // Clear cache every 5 seconds
+    static DWORD lastCacheClearTime;
 };
