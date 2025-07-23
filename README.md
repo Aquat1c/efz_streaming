@@ -21,7 +21,7 @@ This guide is for using a pre-compiled release of the mod. If you want to build 
 
 This mod is designed to be loaded with the **EFZ Mod Manager**. You can download and install the EFZ Mod Manager here - [link](https://docs.google.com/spreadsheets/d/1r0nBAaQczj9K4RG5zAVV4uXperDeoSnXaqQBal2-8Us/edit?usp=sharing)
 
-1.  **Download the latest release** from the [Releases](https://github.com/Aquat1c/efz-streaming/releases) page.
+1.  **Download the latest release** from the [Releases](https://github.com/Aquat1c/efz_streaming/releases) page.
 2.  From the downloaded `.zip` file, extract `efz_streaming_overlay.dll` and the `portraits` folder.
 3.  Place `efz_streaming_overlay.dll` into your `(Game Directory)/mods/` folder.
 4.  In your main game directory, open `EfzModManager.ini` in a text editor. Add the following line to the **bottom** of the file:
