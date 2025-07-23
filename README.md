@@ -106,8 +106,8 @@ The final DLL will be located in `build/bin/Release/efz_streaming_overlay.dll`.
 
 -   **Files are not being created in `overlay_assets`**:
     -   Ensure the mod is loaded correctly. If you have the console version, a window titled "EFZ Streaming Overlay - Debug Console" should appear.
-    -   Check that your game directory is not in a write-protected location (like `C:\Program Files`).
--   **Character portraits show "unknown"**:
+    -   Check that your game directory is not in a write-protected location (like `C:\Program Files`) or if you're not trying to use the mod in the OneDrive directory.
+-   **Character portraits show "unknown"(not the character)**:
     -   Make sure you have copied the `portraits` folder into the `mods/overlay_assets/` directory correctly.
     -   Verify that all portrait filenames are correct and have not been changed.
 
