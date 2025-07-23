@@ -7,6 +7,9 @@
 #include <filesystem>
 #include <windows.h>
 
+// Extern declaration to get the DLL's base address
+EXTERN_C IMAGE_DOS_HEADER __ImageBase;
+
 std::string OverlayData::outputDirectory = "";
 bool OverlayData::initialized = false;
 
@@ -27,12 +30,12 @@ Recommended portrait dimensions: 200x300 pixels
 bool OverlayData::Initialize() {
     LOG_FUNCTION_ENTRY();
     
-    // Get the path of the current DLL
+    // Get the path of the current DLL, regardless of its name
     char dllPath[MAX_PATH];
-    GetModuleFileNameA(GetModuleHandleA("efz_streaming_overlay.dll"), dllPath, MAX_PATH);
+    GetModuleFileNameA((HMODULE)&__ImageBase, dllPath, MAX_PATH);
     
     // The output directory will be a subdirectory next to the DLL
-    outputDirectory = std::filesystem::path(dllPath).parent_path().string() + "/overlay_assets";
+    outputDirectory = (std::filesystem::path(dllPath).parent_path() / "overlay_assets").string();
     
     // Create the output directory if it doesn't exist
     if (!std::filesystem::exists(outputDirectory)) {

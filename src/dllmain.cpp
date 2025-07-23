@@ -10,6 +10,9 @@
 #include <iostream>
 #include <algorithm>
 
+// Extern declaration to get the DLL's base address
+EXTERN_C IMAGE_DOS_HEADER __ImageBase;
+
 // Forward declaration for ConsoleCommandThread
 DWORD WINAPI ConsoleCommandThread(LPVOID lpParam);
 
@@ -20,10 +23,14 @@ HANDLE g_consoleCommandThread = nullptr;
 
 // Function to initialize all components
 bool InitializeComponents() {
-    // Initialize logging first with console enabled
+    // Initialize logging first, conditionally enabling the console
+#ifdef EFZ_ENABLE_CONSOLE
     Logger::Initialize("efz_streaming.log", Logger::LOG_DEBUG, true);
+#else
+    Logger::Initialize("efz_streaming.log", Logger::LOG_DEBUG, false);
+#endif
     Logger::Info("======== EFZ Streaming Overlay DLL Loading ========");
-    Logger::Info("Module base address: " + Logger::FormatHex((DWORD)GetModuleHandleA(NULL)));
+    Logger::Info("Module base address: " + Logger::FormatHex((DWORD)&__ImageBase));
     
     // Enable filtering by default to reduce spam
     Logger::EnableMemoryOperationFiltering(true);
